@@ -165,4 +165,10 @@ def handle_message(event):
 
 if __name__ == "__main__":
     init_db()
-    app.run(port=5000)
+    
+    # --- ส่วนที่ต้องแก้ให้เป็นแบบนี้ ---
+    import os
+    # Render จะเป็นคนกำหนด PORT ให้เองผ่าน Environment Variable
+    port = int(os.environ.get("PORT", 5000))
+    # ต้องตั้ง host เป็น "0.0.0.0" เพื่อให้ภายนอกเชื่อมต่อเข้ามาได้
+    app.run(host="0.0.0.0", port=port)
