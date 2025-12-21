@@ -1,2 +1,5 @@
 flask
 line-bot-sdk
+gunicorn
+psycopg2-binary
+SQLAlchemy
