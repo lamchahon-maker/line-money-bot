@@ -16,8 +16,9 @@ line_bot_api = LineBotApi(LINE_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 # --- 2. ระบบฐานข้อมูล PostgreSQL ---
-# สำคัญ: นำ Internal Database URL ที่ก๊อปปี้มาวางแทนที่ตรงนี้ หรือตั้งเป็น Environment Variable
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL", "postgresql://money_db_lxmd_user:bPXBKJUY9Z7tvSiFVTgGwycwiQ8J96Ps@dpg-d541tdq4d50c738nt25g-a/money_db_lxmd")
+# ใช้ URL ของคุณที่คุณก๊อปปี้มาจาก Render
+DB_URL = "postgresql://money_db_lxmd_user:bPXBKJUY9Z7tvSiFVTgGwycwiQ8J96Ps@dpg-d541tdq4d50c738nt25g-a/money_db_lxmd"
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL", DB_URL)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
@@ -37,9 +38,15 @@ def update_money(t_type, amount, reason=""):
     db.session.add(new_log)
     db.session.commit()
 
-def get_balance():
-    s = db.session.query(db.func.sum(FinanceLog.amount)).filter(FinanceLog.type == 'save').scalar() or 0
-    p = db.session.query(db.func.sum(FinanceLog.amount)).filter(FinanceLog.type == 'spend').scalar() or 0
+def get_balance(days=None):
+    query_s = db.session.query(db.func.sum(FinanceLog.amount)).filter(FinanceLog.type == 'save')
+    query_p = db.session.query(db.func.sum(FinanceLog.amount)).filter(FinanceLog.type == 'spend')
+    if days:
+        start_date = datetime.now() - timedelta(days=days)
+        query_s = query_s.filter(FinanceLog.timestamp >= start_date)
+        query_p = query_p.filter(FinanceLog.timestamp >= start_date)
+    s = query_s.scalar() or 0
+    p = query_p.scalar() or 0
     return s, p
 
 @app.route("/callback", methods=['POST'])
@@ -56,15 +63,21 @@ def callback():
 def handle_message(event):
     msg = event.message.text.strip()
     
+    # 💰 บันทึกรายรับ
     if msg.startswith("เก็บเงิน"):
         num = re.findall(r'\d+', msg)
         if num:
             amount = float(num[0])
-            update_money('save', amount, "ฝากเงินสะสม")
+            update_money('save', amount, "เงินออม/รายรับ")
             s, p = get_balance()
-            reply = f"📥 【 บันทึกรายรับ 】\n💰 +{amount:,.2f} บาท\n✨ ยอดรวม: {s-p:,.2f} บาท"
-        else: reply = "❌ รูปแบบ: เก็บเงิน 200"
+            reply = (f"🟢 【 บันทึกรายรับ 】\n"
+                     f"━━━━━━━━━━━━━━\n"
+                     f"💰 ยอดเงิน: +{amount:,.2f} บาท\n"
+                     f"✅ บันทึกสำเร็จแล้ว!\n"
+                     f"✨ ยอดรวมคงเหลือ: {s-p:,.2f} บาท")
+        else: reply = "❌ รูปแบบผิด! ลองพิมพ์: เก็บเงิน 500"
 
+    # 💸 บันทึกรายจ่าย
     elif msg.startswith("ใช้เงิน"):
         parts = msg.split()
         if len(parts) >= 3:
@@ -74,25 +87,63 @@ def handle_message(event):
                 reason = " ".join(parts[2:])
                 update_money('spend', amount, reason)
                 s, p = get_balance()
-                reply = f"💸 【 บันทึกรายจ่าย 】\n🔻 -{amount:,.2f} บาท\n📝 เหตุผล: {reason}\n📉 คงเหลือ: {s-p:,.2f} บาท"
+                reply = (f"🔴 【 บันทึกรายจ่าย 】\n"
+                         f"━━━━━━━━━━━━━━\n"
+                         f"💸 ยอดเงิน: -{amount:,.2f} บาท\n"
+                         f"📝 เหตุผล: {reason}\n"
+                         f"📉 คงเหลือสุทธิ: {s-p:,.2f} บาท")
             else: reply = "❌ ระบุจำนวนเงินไม่ถูกต้อง"
-        else: reply = "⚠️ ต้องระบุเหตุผลด้วย! เช่น: ใช้เงิน 100 ค่าข้าว"
+        else: reply = "⚠️ ใส่เหตุผลด้วยนะ! เช่น: ใช้เงิน 100 ค่าข้าว"
 
+    # 📊 สรุปทั้งหมด
     elif msg == "สรุป":
         s, p = get_balance()
-        reply = f"📊 【 สรุปยอด 】\n📥 สะสม: {s:,.2f}\n📤 จ่ายรวม: -{p:,.2f}\n━━━━━━━━━━\n✨ คงเหลือ: {s-p:,.2f} บาท"
+        reply = (f"🏆 【 สรุปภาพรวมทั้งหมด 】\n"
+                 f"━━━━━━━━━━━━━━\n"
+                 f"📥 รายรับสะสม: {s:,.2f}\n"
+                 f"📤 รายจ่ายสะสม: {p:,.2f}\n"
+                 f"--------------------------\n"
+                 f"💰 ยอดเงินคงเหลือ: {s-p:,.2f} บาท")
 
+    # 📅 สรุปรายอาทิตย์
+    elif msg == "สรุปอาทิตย์นี้":
+        s, p = get_balance(days=7)
+        reply = (f"🗓️ 【 สรุป 7 วันล่าสุด 】\n"
+                 f"━━━━━━━━━━━━━━\n"
+                 f"🟢 รับมา: {s:,.2f}\n"
+                 f"🔴 จ่ายไป: {p:,.2f}\n"
+                 f"📊 ยอดรวมช่วงนี้: {s-p:,.2f} บาท")
+
+    # 🗓️ สรุปรายเดือน
+    elif msg == "สรุปเดือนนี้":
+        s, p = get_balance(days=30)
+        reply = (f"📅 【 สรุป 30 วันล่าสุด 】\n"
+                 f"━━━━━━━━━━━━━━\n"
+                 f"🟢 รับมา: {s:,.2f}\n"
+                 f"🔴 จ่ายไป: {p:,.2f}\n"
+                 f"📊 ยอดรวมช่วงนี้: {s-p:,.2f} บาท")
+
+    # ⚠️ รีเซ็ต
     elif msg.lower() == "reset":
         db.session.query(FinanceLog).delete()
         db.session.commit()
-        reply = "⚠️ ข้อมูลทั้งหมดถูกล้างแล้ว!"
+        reply = "⚠️ ข้อมูลทั้งหมดถูกล้างเรียบร้อยแล้ว!"
     
+    # 🏠 เมนู
     else:
-        reply = "🏠 【 คำสั่ง 】\n• เก็บเงิน 100\n• ใช้เงิน 50 ค่าขนม\n• สรุป\n• reset"
+        reply = ("ยินดีต้อนรับสู่บอทบัญชี! 🤖✨\n"
+                 "━━━━━━━━━━━━━━\n"
+                 "👉 【 วิธีใช้งาน 】\n"
+                 "• เก็บเงิน 500\n"
+                 "• ใช้เงิน 100 ค่าข้าว\n\n"
+                 "📊 【 ดูสรุปยอด 】\n"
+                 "• สรุป (ยอดทั้งหมด)\n"
+                 "• สรุปอาทิตย์นี้\n"
+                 "• สรุปเดือนนี้\n\n"
+                 "🗑️ พิมพ์ 'reset' เพื่อล้างข้อมูล")
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
