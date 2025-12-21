@@ -47,11 +47,42 @@ def get_detailed_summary(days=None):
     s = sum(l.amount for l in logs if l.type == 'save')
     p = sum(l.amount for l in logs if l.type == 'spend')
     
-    # ดึงรายการจ่ายมาแสดงผล (เหตุผล: จำนวนเงิน)
     spend_list = [f"• {l.reason}: {l.amount:,.0f}" for l in logs if l.type == 'spend']
     spend_text = "\n".join(spend_list) if spend_list else "ไม่มีรายการ"
     
     return s, p, spend_text
+
+# --- 4. ระบบแจ้งเตือนอัตโนมัติ (Endpoints สำหรับ Cron-job) ---
+@app.route("/push_weekly")
+def push_weekly():
+    # แก้ไข 'ใส่_USER_ID_ที่นี่' หลังจากพิมพ์ 'id' ถามบอทใน LINE
+    user_id = "U4ada3d1215dd4cce94feb9208d1834c0" 
+    s, p, detail = get_detailed_summary(days=7)
+    msg = (f"🔔 【 สรุปรายอาทิตย์จ้า 】\n"
+           f"━━━━━━━━━━━━━━\n"
+           f"💸 จ่ายรวม 7 วัน: {p:,.0f} บาท\n"
+           f"📝 รายการที่ใช้:\n{detail}\n\n"
+           f"💰 สุทธิช่วงนี้: {s-p:,.0f} บาท")
+    try:
+        line_bot_api.push_message(user_id, TextSendMessage(text=msg))
+        return "Weekly summary sent!", 200
+    except:
+        return "Failed to send", 500
+
+@app.route("/push_monthly")
+def push_monthly():
+    user_id = "U4ada3d1215dd4cce94feb9208d1834c0"
+    s, p, detail = get_detailed_summary(days=30)
+    msg = (f"📢 【 สรุปรายเดือนจ้า 】\n"
+           f"━━━━━━━━━━━━━━\n"
+           f"💸 จ่ายรวม 30 วัน: {p:,.0f} บาท\n"
+           f"📝 รายการที่ใช้:\n{detail}\n\n"
+           f"💰 สุทธิเดือนนี้: {s-p:,.0f} บาท")
+    try:
+        line_bot_api.push_message(user_id, TextSendMessage(text=msg))
+        return "Monthly summary sent!", 200
+    except:
+        return "Failed to send", 500
 
 @app.route("/callback", methods=['POST'])
 def callback():
@@ -67,15 +98,17 @@ def callback():
 def handle_message(event):
     msg = event.message.text.strip()
     
-    # บันทึกรายรับ
-    if msg.startswith("เก็บเงิน"):
+    # คำสั่งพิเศษสำหรับเช็ค ID
+    if msg.lower() == "id":
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=event.source.user_id))
+
+    elif msg.startswith("เก็บเงิน"):
         num = re.findall(r'\d+', msg)
         if num:
             update_money('save', float(num[0]), "ฝากเงิน")
             reply = "บันทึกข้อมูลสำเร็จแล้ว"
         else: reply = "ลืมใส่จำนวนเงินหรือเปล่า? เช่น: เก็บเงิน 100"
 
-    # บันทึกรายจ่าย
     elif msg.startswith("ใช้เงิน"):
         parts = msg.split()
         if len(parts) >= 3:
@@ -85,10 +118,9 @@ def handle_message(event):
                 reason = " ".join(parts[2:])
                 update_money('spend', amount, reason)
                 reply = "บันทึกข้อมูลสำเร็จแล้ว"
-            else: reply = "ระบุจำนวนเงินไม่ถูก"
-        else: reply = "บอกเหตุผลด้วย เช่น: ใช้เงิน 100 ค่าข้าว"
+            else: reply = "ระบุจำนวนเงินไม่ถูกนะ"
+        else: reply = "บอกเหตุผลด้วยนะ เช่น: ใช้เงิน 100 ค่าข้าว"
 
-    # สรุปภาพรวม
     elif msg == "สรุป":
         s, p, _ = get_detailed_summary()
         reply = (f"📊 【 สรุปยอดทั้งหมด 】\n"
@@ -96,7 +128,6 @@ def handle_message(event):
                  f"➖ จ่าย: {p:,.0f}\n"
                  f"💰 คงเหลือ: {s-p:,.0f} บาท")
 
-    # สรุปรายอาทิตย์ (มีลิสต์รายการ)
     elif msg == "สรุปอาทิตย์นี้":
         s, p, detail = get_detailed_summary(days=7)
         reply = (f"📅 【 สรุป 7 วันล่าสุด 】\n"
@@ -104,7 +135,6 @@ def handle_message(event):
                  f"📝 รายการจ่าย:\n{detail}\n\n"
                  f"📉 สุทธิอาทิตย์นี้: {s-p:,.0f} บาท")
 
-    # สรุปรายเดือน (มีลิสต์รายการ)
     elif msg == "สรุปเดือนนี้":
         s, p, detail = get_detailed_summary(days=30)
         reply = (f"🗓️ 【 สรุป 30 วันล่าสุด 】\n"
@@ -112,19 +142,18 @@ def handle_message(event):
                  f"📝 รายการจ่าย:\n{detail}\n\n"
                  f"📉 สุทธิเดือนนี้: {s-p:,.0f} บาท")
 
-    # รีเซ็ต
     elif msg.lower() == "reset":
         db.session.query(FinanceLog).delete()
         db.session.commit()
         reply = "ล้างข้อมูลให้เกลี้ยงแล้วครับ! 🧹"
     
-    # คู่มือ
     else:
-        reply = ("🤖 วิธีคุยกับบอท:\n"
+        reply = ("🤖 วิธีคุยกับบอทจ้า:\n"
                  "• เก็บเงิน 100\n"
                  "• ใช้เงิน 100 ค่าข้าว\n"
                  "• สรุปอาทิตย์นี้\n"
-                 "• สรุปเดือนนี้")
+                 "• สรุปเดือนนี้\n"
+                 "• พิมพ์ 'id' เพื่อดูไอดีตัวเอง")
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
 
