@@ -58,7 +58,7 @@ def push_weekly():
     # แก้ไข 'ใส่_USER_ID_ที่นี่' หลังจากพิมพ์ 'id' ถามบอทใน LINE
     user_id = "U4ada3d1215dd4cce94feb9208d1834c0" 
     s, p, detail = get_detailed_summary(days=7)
-    msg = (f"🔔 【 สรุปรายอาทิตย์จ้า 】\n"
+    msg = (f"🔔 【 สรุปรายอาทิตย์ 】\n"
            f"━━━━━━━━━━━━━━\n"
            f"💸 จ่ายรวม 7 วัน: {p:,.0f} บาท\n"
            f"📝 รายการที่ใช้:\n{detail}\n\n"
@@ -73,7 +73,7 @@ def push_weekly():
 def push_monthly():
     user_id = "U4ada3d1215dd4cce94feb9208d1834c0"
     s, p, detail = get_detailed_summary(days=30)
-    msg = (f"📢 【 สรุปรายเดือนจ้า 】\n"
+    msg = (f"📢 【 สรุปรายเดือน 】\n"
            f"━━━━━━━━━━━━━━\n"
            f"💸 จ่ายรวม 30 วัน: {p:,.0f} บาท\n"
            f"📝 รายการที่ใช้:\n{detail}\n\n"
@@ -118,8 +118,8 @@ def handle_message(event):
                 reason = " ".join(parts[2:])
                 update_money('spend', amount, reason)
                 reply = "บันทึกข้อมูลสำเร็จแล้ว"
-            else: reply = "ระบุจำนวนเงินไม่ถูกนะ"
-        else: reply = "บอกเหตุผลด้วยนะ เช่น: ใช้เงิน 100 ค่าข้าว"
+            else: reply = "ระบุจำนวนเงินไม่ถูก"
+        else: reply = "บอกเหตุผลด้วย เช่น: ใช้เงิน 100 ค่าข้าว"
 
     elif msg == "สรุป":
         s, p, _ = get_detailed_summary()
@@ -145,10 +145,10 @@ def handle_message(event):
     elif msg.lower() == "reset":
         db.session.query(FinanceLog).delete()
         db.session.commit()
-        reply = "ล้างข้อมูลให้เกลี้ยงแล้วครับ! 🧹"
+        reply = "ล้างข้อมูลแล้ว"
     
     else:
-        reply = ("🤖 วิธีคุยกับบอทจ้า:\n"
+        reply = ("วิธีคุยกับบอท:\n"
                  "• เก็บเงิน 100\n"
                  "• ใช้เงิน 100 ค่าข้าว\n"
                  "• สรุปอาทิตย์นี้\n"
