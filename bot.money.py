@@ -17,7 +17,7 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 # --- 2. ระบบฐานข้อมูล PostgreSQL ---
 # สำคัญ: นำ Internal Database URL ที่ก๊อปปี้มาวางแทนที่ตรงนี้ หรือตั้งเป็น Environment Variable
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL", "วาง_INTERNAL_DATABASE_URL_ตรงนี้")
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL", "postgresql://money_db_lxmd_user:bPXBKJUY9Z7tvSiFVTgGwycwiQ8J96Ps@dpg-d541tdq4d50c738nt25g-a/money_db_lxmd")
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
@@ -95,3 +95,4 @@ def handle_message(event):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
