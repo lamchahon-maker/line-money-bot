@@ -52,10 +52,9 @@ def get_detailed_summary(days=None):
     
     return s, p, spend_text
 
-# --- 4. ระบบแจ้งเตือนอัตโนมัติ (Endpoints สำหรับ Cron-job) ---
+# --- 4. ระบบแจ้งเตือนอัตโนมัติ ---
 @app.route("/push_weekly")
 def push_weekly():
-    # แก้ไข 'ใส่_USER_ID_ที่นี่' หลังจากพิมพ์ 'id' ถามบอทใน LINE
     user_id = "U4ada3d1215dd4cce94feb9208d1834c0" 
     s, p, detail = get_detailed_summary(days=7)
     msg = (f"🔔 【 สรุปรายอาทิตย์ 】\n"
@@ -84,6 +83,11 @@ def push_monthly():
     except:
         return "Failed to send", 500
 
+# --- ส่วนที่เพิ่ม: หน้าแรกสำหรับให้ UptimeRobot เช็คสถานะ (วางตรงนี้!) ---
+@app.route("/")
+def home():
+    return "OK", 200
+
 @app.route("/callback", methods=['POST'])
 def callback():
     signature = request.headers['X-Line-Signature']
@@ -98,9 +102,13 @@ def callback():
 def handle_message(event):
     msg = event.message.text.strip()
     
-    # คำสั่งพิเศษสำหรับเช็ค ID
     if msg.lower() == "id":
         line_bot_api.reply_message(event.reply_token, TextSendMessage(text=event.source.user_id))
+
+    # เพิ่มคำสั่ง เช็ค กลับมาให้
+    elif msg == "เช็ค":
+        s, p, _ = get_detailed_summary()
+        reply = f"💰 ยอดเงินเก็บที่มีอยู่: {s-p:,.0f} บาท"
 
     elif msg.startswith("เก็บเงิน"):
         num = re.findall(r'\d+', msg)
@@ -151,9 +159,10 @@ def handle_message(event):
         reply = ("วิธีคุยกับบอท:\n"
                  "• เก็บเงิน 100\n"
                  "• ใช้เงิน 100 ค่าข้าว\n"
+                 "• เช็ค\n"
                  "• สรุปอาทิตย์นี้\n"
                  "• สรุปเดือนนี้\n"
-                 "• พิมพ์ 'id' เพื่อดูไอดีตัวเอง")
+                 "• id")
 
     line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
 
